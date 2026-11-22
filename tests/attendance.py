@@ -84,6 +84,30 @@ with tempfile.TemporaryDirectory() as tmp:
         assert sorted(scan['duplicate'] for scan in scans) == [False,True]
         assert scans[0]['guest']['present_at'] == scans[1]['guest']['present_at']
         assert sum(bool(g['present_at']) for g in request(other,bases[1],'guests')['guests']) == 1
+        # A single badge admits the same email to each enrolled event independently.
+        inspire = dict(guest, event='Inspire', first='Sample', last='Guest', category='Partner - Delegate')
+        rls = dict(inspire, event='RLS', first='Alternate', category='Tech Data - RLS', country='ANZ')
+        missing = dict(inspire, first='No', last='Email', email='')
+        request(staff,base,'manifest',{'rows':[inspire,rls,missing]})
+        again = request(staff,base,'manifest',{'rows':[inspire,rls,missing]})
+        assert again['added'] == 0 and again['skipped'] == 3
+        merged = next(g for g in request(staff,base,'guests')['guests'] if g['id'] == guest_id)
+        assert merged['events']['Inspire']['present_at'] and not merged['events']['RLS']['present_at']
+        assert merged['events']['RLS']['name'] == 'Alternate Guest'
+        request(staff,base,'scan',{'id':imported['id'],'event':'RLS'},409)
+        assert not request(staff,base,'scan',{'id':guest_id,'event':'RLS'})['duplicate']
+        assert request(staff,base,'scan',{'id':guest_id,'event':'RLS'})['duplicate']
+        request(guests,base,'backup',{},401)
+        request(guests,base,'reset-attendance',{'event':'Inspire','confirmation':'RESET Inspire'},401)
+        backup=request(staff,base,'backup',{})
+        assert (storage/'backups'/backup['file']).exists()
+        request(staff,base,'reset-attendance',{'event':'RLS','confirmation':'RESET Inspire'},422)
+        reset=request(staff,base,'reset-attendance',{'event':'Inspire','confirmation':'RESET Inspire'})
+        assert reset['cleared']==1
+        before = json.loads((storage/'backups'/reset['file']).read_text())
+        assert before['guests'][guest_id]['events']['Inspire']['present_at']
+        after = next(g for g in request(staff,base,'guests')['guests'] if g['id']==guest_id)
+        assert not after['events']['Inspire']['present_at'] and after['events']['RLS']['present_at']
         replacement = 'New-fixture-password!'
         change = {'password':password,'newPassword':replacement}
         request(guests,base,'change-password',change,401)
@@ -93,7 +117,7 @@ with tempfile.TemporaryDirectory() as tmp:
         fresh = client()
         request(fresh,base,'login',{'password':password},403)
         request(fresh,base,'login',{'password':replacement})
-        assert len(request(fresh,base,'guests')['guests']) == 2
+        assert len(request(fresh,base,'guests')['guests']) == 3
         request(staff,base,'logout',{})
         request(staff,base,'guests',status=401)
         print('Activation, auth, imports, pass privacy and concurrent check-in passed.')

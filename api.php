@@ -19,20 +19,24 @@ function writePrivate(string $path, string $content): void {
         }
     } finally { if (is_file($tmp)) unlink($tmp); }
 }
+require_once __DIR__.'/events.php';
 function publicPass(array $g): array {
     return array_intersect_key($g, array_flip(['name','company','id']));
 }
-function validGuest(mixed $row, int $number): array {
+function validGuest(mixed $row, int $number, bool $manifest=false): array {
     if (!is_array($row)) reject(422, "Invalid guest on row $number.");
     $g = [];
-    foreach (['name'=>180, 'email'=>254, 'country'=>120, 'company'=>200, 'title'=>180] as $key=>$max) {
+    $fields=['name'=>380, 'email'=>254, 'country'=>120, 'company'=>200, 'title'=>180];
+    if ($manifest) $fields += ['first'=>180,'last'=>180,'category'=>180];
+    foreach ($fields as $key=>$max) {
         $v = $row[$key] ?? '';
         if (!is_string($v) || strlen($v) > $max * 4 || preg_match('/[\x00-\x1F\x7F]/', $v)) {
             reject(422, "Check the $key field on row $number.");
         }
         $g[$key] = trim($v);
     }
-    if ($g['name'] === '' || !filter_var($g['email'], FILTER_VALIDATE_EMAIL)) {
+    if ($manifest && ($g['first'] !== '' || $g['last'] !== '')) $g['name']=trim($g['first'].' '.$g['last']);
+    if ($g['name'] === '' || ((!$manifest || $g['email'] !== '') && !filter_var($g['email'], FILTER_VALIDATE_EMAIL))) {
         reject(422, "Row $number needs a full name and valid email address.");
     }
     return $g;
@@ -93,7 +97,30 @@ function dispatch(string $action, array $input, array &$state, string $dir, bool
         session_destroy();
         return ['active'=>false];
     }
-    if ($action === 'guests') return ['guests'=>array_values($state['guests'])];
+    if ($action === 'guests') {
+        $output=[];
+        foreach ($state['guests'] as $g) $output[]=$g + ['events'=>memberships($g)];
+        return ['guests'=>$output];
+    }
+    if ($action === 'manifest') return importEvents($input['rows'] ?? [],$state,$changed);
+    if ($action === 'backup') return ['file'=>snapshotDesk($dir,$state,'manual')];
+    if ($action === 'reset-attendance') {
+        $event=eventName($input['event'] ?? null);
+        if (($input['confirmation'] ?? '') !== 'RESET '.$event) reject(422,'Type RESET followed by the event name.');
+        $file=snapshotDesk($dir,$state,'before-reset-'.$event);
+        $count=0;
+        foreach ($state['guests'] as &$g) {
+            $events=memberships($g);
+            if (empty($events[$event]['present_at'])) continue;
+            $events[$event]['present_at']=null;
+            $g['events']=$events;
+            if ($event==='Inspire') $g['present_at']=null;
+            $count++;
+        }
+        unset($g);
+        $changed=$count>0;
+        return ['file'=>$file,'cleared'=>$count];
+    }
     if ($action === 'add' || $action === 'import') {
         $rows = $input['rows'] ?? null;
         if (!is_array($rows) || !array_is_list($rows) || count($rows)<1 || count($rows)>5000)
@@ -123,12 +150,17 @@ function dispatch(string $action, array $input, array &$state, string $dir, bool
         $id = $input['id'] ?? '';
         if (!is_string($id) || !isset($state['guests'][$id])) reject(404, 'Unknown pass. Check the QR code and try again.');
         $g = &$state['guests'][$id];
-        $duplicate = $g['present_at'] !== null;
+        $event=eventName($input['event'] ?? 'Inspire');
+        $events=memberships($g);
+        if (!isset($events[$event])) reject(409, 'This pass is not registered for '.$event.'.');
+        $duplicate=$events[$event]['present_at'] !== null;
         if (!$duplicate) {
-            $g['present_at'] = gmdate('Y-m-d\TH:i:s\Z');
-            $changed = true;
+            $events[$event]['present_at']=gmdate('Y-m-d\TH:i:s\Z');
+            $g['events']=$events;
+            if ($event==='Inspire') $g['present_at']=$events[$event]['present_at'];
+            $changed=true;
         }
-        return ['guest'=>$g,'duplicate'=>$duplicate];
+        return ['guest'=>$events[$event] + ['id'=>$id,'email'=>$g['email']], 'duplicate'=>$duplicate];
     }
     reject(404, 'Unknown request.');
 }

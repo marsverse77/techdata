@@ -1,0 +1,13 @@
+name: Check registration desk
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: php -l api.php
+      - run: node --check assets/desk.js
+      - run: node tests/qr.cjs
+      - run: python3 tests/attendance.py

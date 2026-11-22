@@ -15,3 +15,4 @@ Connect this repository's main branch to the domain's PHP website root and enabl
 On first use, open the site once, then find `techdata-private/setup-code.txt` beside `public_html` in the hosting file manager. Use the one-time code and choose a staff password on the activation screen. Activation removes the code. Staff can then sign in on each check-in device. To run a disposable local instance, use `php -S 127.0.0.1:8080` from the project with `TECHDATA_STORAGE` pointing to a private temporary directory outside the project.
 
 QR passes contain a random ID. A guest can display a pass without signing in. Only an authenticated desk session can read the full roster or mark attendance. The attendance CSV export includes the five participant fields, status and check-in time. The pass distribution export includes a unique link for each guest.
+

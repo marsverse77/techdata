@@ -133,7 +133,11 @@ function qrMarkup(id){
  return `<svg class="qr" role="img" aria-label="Unique guest QR code" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n+8} ${n+8}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="${path}" fill="#000"/></svg>`;
 }
 function passCard(g){return `<article class="qr-pass"><div class="pass-head"><span>TechData</span><span>Guest pass</span></div><h2>${esc(g.name)}</h2><p class="sub">${esc(g.company)}</p>${qrMarkup(g.id)}<code>${esc(g.id)}</code><div class="pass-foot">Present this QR code at the registration desk.</div></article>`;}
-function printPasses(guests){$('printarea').innerHTML=guests.map(passCard).join('');if(modal.open)modal.close();window.print();}
+function printPasses(guests){
+ $('printarea').innerHTML=guests.map(g=>qrMarkup(g.id)).join('');
+ if(modal.open)modal.close();
+ window.print();
+}
 window.addEventListener('afterprint',()=>$('printarea').replaceChildren());
 function openPass(g){
  showModal('Guest pass',`${passCard(g)}<div class="row pass-actions"><button class="btn" id="copy">${icon('link')}Copy pass link</button><button class="btn primary" id="print">${icon('print')}Print pass</button></div><div id="copy-field"></div>`);

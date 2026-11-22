@@ -11,3 +11,9 @@ jobs:
       - run: node --check assets/desk.js
       - run: node tests/qr.cjs
       - run: python3 tests/attendance.py
+      - name: Verify live registration service
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'marsverse77/techdata'
+        run: |
+          curl -fsS --retry 3 --max-time 15 'https://techdata.marsverse.id/api.php?action=session' |
+            python3 -c "import json,sys; s=json.load(sys.stdin); assert s['active'] is False and isinstance(s['ready'],bool); print('Staff desk activated' if s['ready'] else 'Staff desk awaiting initial activation')"
+          test "$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' 'https://techdata.marsverse.id/api.php?action=guests')" = 401

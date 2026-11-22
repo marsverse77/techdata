@@ -25,7 +25,7 @@ async function api(action,input){
 function message(txt){$('notice').textContent=txt;clearTimeout(clock);clock=setTimeout(()=>$('notice').textContent='',4200);}
 function authView(ready){
  $('session-tools').innerHTML='';
- app.innerHTML=`<section class="auth"><div class="auth-form"><div><p class="eyebrow">Registration desk</p><h1>${ready?'Staff sign-in':'Activate your desk'}</h1><p class="sub">${ready?'Sign in to manage guest passes and record arrivals.':'Use the private setup code from your hosting file manager to create the staff password.'}</p></div><form id="authform" class="stack">${ready?'':'<label>One-time setup code<input name="code" required autocomplete="off" spellcheck="false" autocapitalize="none"></label>'}<label>${ready?'Staff password':'Choose staff password'}<input type="password" name="password" required ${ready?'autocomplete="current-password"':'minlength="12" autocomplete="new-password"'}></label><p id="auth-error" class="error" hidden></p><button class="btn primary">${icon('lock')}${ready?'Sign in':'Activate registration desk'}</button></form></div><div class="art" aria-hidden="true"><div class="ticket"><div class="ticket-top"><span>TechData</span>${icon('pass')}</div><div class="ticket-mid"><span class="eyebrow">Event admission</span><strong>Guest<br>pass</strong></div><div class="ticket-bottom"><span>TECHDATA</span><span class="barcode"></span></div></div></div></section>`;
+ app.innerHTML=`<section class="auth"><div class="auth-form"><div><p class="eyebrow">Registration desk</p><h1>${ready?'Staff sign-in':'Activate your desk'}</h1><p class="sub">${ready?'Sign in to manage guest passes and record arrivals.':'Use the private setup code from your hosting file manager to create the staff password.'}</p></div><form id="authform" class="stack">${ready?'':'<label>One-time setup code<input type="password" name="code" required autocomplete="off" spellcheck="false" autocapitalize="none"></label>'}<label>${ready?'Staff password':'Choose staff password'}<input type="password" name="password" required ${ready?'autocomplete="current-password"':'minlength="12" autocomplete="new-password"'}></label><p id="auth-error" class="error" hidden></p><button class="btn primary">${icon('lock')}${ready?'Sign in':'Activate registration desk'}</button></form></div><div class="art" aria-hidden="true"><div class="ticket"><div class="ticket-top"><span>TechData</span>${icon('pass')}</div><div class="ticket-mid"><span class="eyebrow">Event admission</span><strong>Guest<br>pass</strong></div><div class="ticket-bottom"><span>TECHDATA</span><span class="barcode"></span></div></div></div></section>`;
  $('authform').onsubmit=async e=>{
   e.preventDefault();const form=e.currentTarget,button=form.querySelector('button');button.disabled=true;
   try{await api(ready?'login':'activate',Object.fromEntries(new FormData(form)));await startDesk();}
@@ -104,7 +104,7 @@ function parseCSV(text){
  return rows.map((r,i)=>{if(r.length!==fields.length)throw Error(`Row ${i+2} has the wrong number of fields.`);return Object.fromEntries(keys.map((k,j)=>[k,r[indexes[j]].trim()]));});
 }
 function importGuests(){
- formDialog('Import guest list',`<p class="field-note">Use a UTF-8 CSV with the five participant fields. Existing emails keep their original passes.</p><div>${btn('template','Download CSV template','down')}</div><label>CSV file<input type="file" name="file" accept=".csv,text/csv" required></label>`,async form=>{
+ formDialog('Import guest list',`<p class="field-note">Use a UTF-8 CSV with the five participant fields. Existing emails keep their original passes.</p><div><a class="btn" href="assets/guest-template.csv" download="TechData-guest-template.csv">${icon('down')}Download CSV template</a></div><label>CSV file<input type="file" name="file" accept=".csv,text/csv" required></label>`,async form=>{
  const file=form.elements.file.files[0];if(file.size>4*1024*1024)throw Error('Split your CSV into files smaller than 4 MB.');
  const rows=parseCSV(await file.text());const r=await api('import',{rows});modal.close();tab='directory';shell();await refresh();message(`${r.added} added · ${r.skipped} duplicate emails skipped.`);
  },'Import guests');
@@ -167,7 +167,6 @@ document.addEventListener('click',async e=>{
  case 'logout':await api('logout',{});authenticated=false;roster=[];result=null;authView(true);break;
  case 'desk':case 'directory':tab=act;shell();await refresh();break;
  case 'add':addGuest();break;case 'import':importGuests();break;case 'camera':await camera();break;
- case 'template':exportFile('TechData-guest-template.csv',[headers]);break;
  case 'prev':page=Math.max(0,page-1);drawTable();break;case 'next':page++;drawTable();break;
  case 'exports':showModal('Export guest list',`<div class="stack">${btn('attendance','Download attendance CSV','down')}${btn('links','Download guest pass links','link')}${btn('printall','Print all guest passes','print')}</div>`);break;
  case 'attendance':exportFile('TechData-attendance.csv',[[...headers,'Attendance','Check-in time (UTC)'],...roster.map(g=>[...keys.map(k=>g[k]),g.present_at?'Present':'Awaiting arrival',g.present_at??''])]);modal.close();break;

@@ -43,7 +43,9 @@ function dispatch(string $action, array $input, array &$state, string $dir, bool
     $active = isset($_SESSION['until']) && $_SESSION['until'] > $now;
     $ready = isset($state['password']);
     if ($action === 'session') return ['active'=>$active, 'ready'=>$ready];
-    if ($action === 'login' || $action === 'activate') {
+    $rotating = $action === 'change-password';
+    if ($rotating && !$active) reject(401, 'Sign in to change the staff password.');
+    if ($action === 'login' || $action === 'activate' || $rotating) {
         $ip = hash('sha256', (string)($_SERVER['REMOTE_ADDR'] ?? 'local'));
         $attempt = $state['attempts'][$ip] ?? [0, $now];
         if ($attempt[1] < $now - 600) $attempt = [0, $now];
@@ -64,7 +66,13 @@ function dispatch(string $action, array $input, array &$state, string $dir, bool
             $changed = true;
             reject(403, $action === 'activate' ? 'The setup code was not accepted.' : 'The password was not accepted.');
         }
-        if ($action === 'activate') {
+        if ($rotating) {
+            $next = $input['newPassword'] ?? null;
+            if (!is_string($next) || strlen($next) < 12 || strlen($next) > 72 || str_contains($next, "\0")) {
+                reject(422, 'Choose a password between 12 and 72 bytes.');
+            }
+            $state['password'] = password_hash($next, PASSWORD_DEFAULT);
+        } elseif ($action === 'activate') {
             $state['password'] = password_hash($pass, PASSWORD_DEFAULT);
             unset($state['setupHash']);
         }

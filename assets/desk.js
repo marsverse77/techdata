@@ -36,7 +36,7 @@ function authView(ready){
 function showError(id,txt){const el=$(id);if(el){el.hidden=false;el.textContent=txt;}}
 function empty(ic,title,txt){return `<div class="empty"><span class="ico-box">${icon(ic)}</span><h3>${title}</h3><p>${txt}</p></div>`;}
 function shell(){
- $('session-tools').innerHTML=`<button class="linkbtn" data-action="logout">${icon('logout')}Sign out</button>`;
+ $('session-tools').innerHTML=`<button class="linkbtn" data-action="change-password" aria-label="Change staff password" title="Change staff password">${icon('lock')}</button><button class="linkbtn" data-action="logout">${icon('logout')}Sign out</button>`;
  app.innerHTML=`<div class="head"><div><h1>Registration desk</h1><p class="sub">Guest passes and event attendance.</p></div><div class="actions">${btn('import','Import CSV','up')}${btn('add','Add guest','plus','primary')}</div></div><nav class="tabs" aria-label="Registration views"><button class="tab" data-action="desk" ${tab==='desk'?'aria-current="page"':''}>${icon('scan')}Check-in desk</button><button class="tab" data-action="directory" ${tab==='directory'?'aria-current="page"':''}>${icon('users')}Guest directory</button></nav><div id="sync-error" class="error" hidden></div><div class="metrics" id="metrics"></div><div id="view"></div>`;
  if(tab==='desk'){
   $('view').innerHTML=`<div class="columns"><section class="panel dark"><div class="scanner-top"><span class="eyebrow">QR scanner</span><span class="ico-box">${icon('scan')}</span></div><h2>Scan a guest pass</h2><p class="sub">Scan a printed pass or phone screen with your QR reader.</p><form id="scanform" class="scanform"><input id="scan-id" aria-label="Guest pass code" placeholder="Scan or paste pass code" autocomplete="off" spellcheck="false" autocapitalize="none" required><button class="btn accent">Check in</button></form><button class="linkbtn" data-action="camera">${icon('camera')}Use camera</button><div id="scan-feedback" role="status" aria-live="polite"></div></section><section class="panel"><div class="panel-head"><h2>Recent arrivals</h2><span class="ico-box mint">${icon('activity')}</span></div><div id="recent"></div></section></div>`;
@@ -164,6 +164,13 @@ document.addEventListener('click',async e=>{
  const act=target.dataset.action;if(!act)return;
  try{switch(act){
  case 'close':modal.close();break;
+ case 'change-password':
+  formDialog('Change staff password','<label>Current password<input type="password" name="password" autocomplete="current-password" required></label><label>New password<input type="password" name="newPassword" autocomplete="new-password" minlength="12" maxlength="72" required></label>',async form=>{
+   await api('change-password',Object.fromEntries(new FormData(form)));
+   modal.close();
+   message('Staff password updated.');
+  },'Save password');
+  break;
  case 'logout':await api('logout',{});authenticated=false;roster=[];result=null;authView(true);break;
  case 'desk':case 'directory':tab=act;shell();await refresh();break;
  case 'add':addGuest();break;case 'import':importGuests();break;case 'camera':await camera();break;

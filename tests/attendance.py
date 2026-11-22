@@ -84,6 +84,16 @@ with tempfile.TemporaryDirectory() as tmp:
         assert sorted(scan['duplicate'] for scan in scans) == [False,True]
         assert scans[0]['guest']['present_at'] == scans[1]['guest']['present_at']
         assert sum(bool(g['present_at']) for g in request(other,bases[1],'guests')['guests']) == 1
+        replacement = 'New-fixture-password!'
+        change = {'password':password,'newPassword':replacement}
+        request(guests,base,'change-password',change,401)
+        request(staff,base,'change-password',dict(change,password='wrong'),403)
+        request(staff,base,'change-password',dict(change,newPassword='tiny'),422)
+        request(staff,base,'change-password',change)
+        fresh = client()
+        request(fresh,base,'login',{'password':password},403)
+        request(fresh,base,'login',{'password':replacement})
+        assert len(request(fresh,base,'guests')['guests']) == 2
         request(staff,base,'logout',{})
         request(staff,base,'guests',status=401)
         print('Activation, auth, imports, pass privacy and concurrent check-in passed.')

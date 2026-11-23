@@ -8,16 +8,17 @@ const icon=(id)=>`<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path
 const btn=(action,label,ic,cls='')=>`<button type="button" class="btn ${cls}" data-action="${action}">${ic?icon(ic):''}${label}</button>`;
 const headers=['Full Name','Email','Country of origin','Company','Title'];
 const keys=['name','email','country','company','title'];
-let roster=[],tab='desk',page=0,query='',filter='',result=null,authenticated=false,serial=0,clock=null,stream=null,frame=0,cameraVersion=0,scanBusy=false,refreshGen=0;
+let walkins=[],roster=[],tab='desk',page=0,query='',filter='',result=null,authenticated=false,serial=0,clock=null,stream=null,frame=0,cameraVersion=0,scanBusy=false,refreshGen=0;
 const perPage=30;
-const events=['Inspire','RLS'];
+const events=['Inspire','Walk-In'];
 let currentEvent='Inspire';
-function eventRoster(event=currentEvent){return roster.filter(g=>g.events?.[event]).map(g=>({...g,...g.events[event]}));}
+function eventRoster(event=currentEvent){return event==='Walk-In'?walkins:roster;}
 function showSummary(){
  const bar=$('event-bar');if(!bar)return;
  bar.innerHTML=events.map(e=>{
   const list=eventRoster(e),count=list.filter(g=>g.present_at).length;
-  return '<button type="button" data-event="'+e+'" aria-pressed="'+(e===currentEvent)+'"><strong>'+e+' Attendance</strong><span>'+count+' / '+list.length+' present</span></button>';
+  const label=e==='Inspire'?'Inspire Attendance':'Walk-In Participants';
+  return '<button type="button" data-event="'+e+'" aria-pressed="'+(e===currentEvent)+'"><strong>'+label+'</strong><span>'+count+' / '+list.length+' present</span></button>';
  }).join('');
 }
 const formatTime=timestamp=>new Date(timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
@@ -29,7 +30,7 @@ async function api(action,input){
  try{resp=await fetch(`api.php?action=${action}`,opts)}catch(e){throw new Error('Connection lost. Reconnect and try again.');}
  let data;
  try{data=await resp.json()}catch(e){throw new Error('The server did not return a registration response. Please retry.');}
- if(!resp.ok){if(resp.status===401&&authenticated){authenticated=false;roster=[];if(modal.open)modal.close();authView(true);}throw new Error(data.error||'Request failed.');}
+ if(!resp.ok){if(resp.status===401&&authenticated){authenticated=false;walkins=[];roster=[];if(modal.open)modal.close();authView(true);}throw new Error(data.error||'Request failed.');}
  return data;
 }
 function message(txt){$('notice').textContent=txt;clearTimeout(clock);clock=setTimeout(()=>$('notice').textContent='',4200);}
@@ -46,13 +47,14 @@ function authView(ready){
 function showError(id,txt){const el=$(id);if(el){el.hidden=false;el.textContent=txt;}}
 function empty(ic,title,txt){return `<div class="empty"><span class="ico-box">${icon(ic)}</span><h3>${title}</h3><p>${txt}</p></div>`;}
 function shell(){
+ const walk=currentEvent==='Walk-In';
  $('session-tools').innerHTML=`<button class="linkbtn" data-action="change-password" aria-label="Change staff password" title="Change staff password">${icon('lock')}</button><button class="linkbtn" data-action="logout">${icon('logout')}Sign out</button>`;
- app.innerHTML=`<div class="head"><div><h1>Registration desk</h1><p class="sub">${currentEvent} guest passes and attendance.</p></div><div class="actions">${btn('backup','Backup','lock')}${btn('import','Import manifest','up')}${btn('add','Add guest','plus','primary')}</div></div><div id="event-bar" class="event-bar" aria-label="Attendance by event"></div><nav class="tabs" aria-label="Registration views"><button class="tab" data-action="desk" ${tab==='desk'?'aria-current="page"':''}>${icon('scan')}Check-in desk</button><button class="tab" data-action="directory" ${tab==='directory'?'aria-current="page"':''}>${icon('users')}Guest directory</button></nav><div id="sync-error" class="error" hidden></div><div class="metrics" id="metrics"></div><div id="view"></div>`;
+ app.innerHTML=`<div class="head"><div><h1>Registration desk</h1><p class="sub">${walk?'Register and check in guests who arrive on site.':'Inspire guest passes and attendance.'}</p></div><div class="actions">${btn('backup','Backup','lock')}${walk?btn('walk-in','Register walk-in','plus','primary'):btn('import','Import manifest','up')+btn('add','Add guest','plus','primary')}</div></div><div id="event-bar" class="event-bar" aria-label="Attendance by event"></div><nav class="tabs" aria-label="Registration views" ${walk?'hidden':''}><button class="tab" data-action="desk" ${tab==='desk'?'aria-current="page"':''}>${icon('scan')}Check-in desk</button><button class="tab" data-action="directory" ${tab==='directory'?'aria-current="page"':''}>${icon('users')}Guest directory</button></nav><div id="sync-error" class="error" hidden></div><div class="metrics" id="metrics"></div><div id="view"></div>`;
  if(tab==='desk'){
   $('view').innerHTML=`<div class="columns"><section class="panel dark"><div class="scanner-top"><span class="eyebrow">QR scanner</span><span class="ico-box">${icon('scan')}</span></div><h2>Scan for ${currentEvent}</h2><p class="sub">Scan a printed pass or phone screen with your QR reader.</p><form id="scanform" class="scanform"><input id="scan-id" aria-label="Guest pass code" placeholder="Scan or paste pass code" autocomplete="off" spellcheck="false" autocapitalize="none" required><button class="btn accent">Check in</button></form><button class="linkbtn" data-action="camera">${icon('camera')}Use camera</button><div id="scan-feedback" role="status" aria-live="polite"></div></section><section class="panel"><div class="panel-head"><h2>Recent arrivals</h2><span class="ico-box mint">${icon('activity')}</span></div><div id="recent"></div></section></div>`;
   $('scanform').onsubmit=e=>{e.preventDefault();const input=$('scan-id');const value=input.value;input.value='';runScan(value);};$('scan-id').focus();
  }else{
-  $('view').innerHTML=`<section class="panel directory"><div class="panel-head"><h2>${currentEvent} attendance</h2>${btn('exports','Export','down')}</div><div class="filters"><input id="search" type="search" placeholder="Search name, email or company" aria-label="Search guests"><select id="filter" aria-label="Attendance status"><option value="">All statuses</option><option value="yes">Present</option><option value="no">Awaiting arrival</option></select></div><div id="table"></div><div class="desk-reset">${btn('reset','Reset '+currentEvent+' attendance','clock')}</div></section>`;
+  $('view').innerHTML=`<section class="panel directory"><div class="panel-head"><h2>${walk?'Walk-in register':'Inspire attendance'}</h2>${walk?btn('attendance','Export walk-in CSV','down'):btn('exports','Export','down')}</div><div class="filters"><input id="search" type="search" placeholder="Search name, email or company" aria-label="Search guests"><select id="filter" aria-label="Attendance status"><option value="">All statuses</option><option value="yes">Present</option><option value="no">Awaiting arrival</option></select></div><div id="table"></div><div class="desk-reset">${btn('reset','Reset '+currentEvent+' attendance','clock')}</div></section>`;
   $('search').value=query;$('filter').value=filter;
   $('search').oninput=e=>{query=e.target.value;page=0;drawTable();};
   $('filter').onchange=e=>{filter=e.target.value;page=0;drawTable();};
@@ -71,19 +73,20 @@ function draw(){
  if(result)el.innerHTML=`<div class="scan-result ${result.kind}"><strong>${esc(result.title)}</strong><br>${esc(result.details)}</div>`;
 }
 function drawTable(){
- const data=eventRoster().filter(g=>(!filter||Boolean(g.present_at)===(filter==='yes'))&&[...keys,'category'].some(k=>(g[k]||'').toLowerCase().includes(query.trim().toLowerCase()))).sort((a,b)=>a.name.localeCompare(b.name));
+ const walk=currentEvent==='Walk-In',list=eventRoster();
+ const data=list.filter(g=>(!filter||Boolean(g.present_at)===(filter==='yes'))&&[...keys,'category'].some(k=>(g[k]||'').toLowerCase().includes(query.trim().toLowerCase()))).sort((a,b)=>a.name.localeCompare(b.name));
  page=Math.min(page,Math.max(0,Math.ceil(data.length/perPage)-1));
  const rows=data.slice(page*perPage,(page+1)*perPage);
- $('table').innerHTML=!rows.length?empty('users',roster.length?'No matching guests':'Your guest list is empty',roster.length?'Try another search or status.':'Add a guest or import your participant CSV to issue the first passes.'):
- `<div class="tablewrap"><table><thead><tr><th>Guest</th><th>Category</th><th>Company / title</th><th>Country of origin</th><th>Attendance</th><th>Pass</th></tr></thead><tbody>${rows.map(g=>`<tr><td class="identity"><strong>${esc(g.name)}</strong><small>${esc(g.email)}</small></td><td>${esc(g.category)||'—'}</td><td class="identity">${esc(g.company)||'—'}<small>${esc(g.title)}</small></td><td>${esc(g.country)||'—'}</td><td><span class="badge ${g.present_at?'yes':''}">${g.present_at?'Present':'Awaiting arrival'}</span></td><td><button class="btn" data-pass="${esc(g.id)}">${icon('pass')}View</button></td></tr>`).join('')}</tbody></table></div><div class="table-foot"><span>${page*perPage+1}–${page*perPage+rows.length} of ${data.length} guests</span>${data.length>perPage?`<div class="row">${btn('prev','Previous')}${btn('next','Next')}</div>`:''}</div>`;
+ $('table').innerHTML=!rows.length?empty('users',list.length?'No matching guests':walk?'No walk-ins yet':'Your guest list is empty',list.length?'Try another search or status.':walk?'Select Register walk-in when a guest arrives.':'Add a guest or import your Inspire manifest.'):
+ `<div class="tablewrap"><table><thead><tr><th>Guest</th><th>Category</th><th>Company / title</th><th>Country of origin</th><th>Attendance</th><th>${walk?'Check-in':'Pass'}</th></tr></thead><tbody>${rows.map(g=>`<tr><td class="identity"><strong>${esc(g.name)}</strong><small>${esc(g.email)}</small></td><td>${esc(g.category)||'—'}</td><td class="identity">${esc(g.company)||'—'}<small>${esc(g.title)}</small></td><td>${esc(g.country)||'—'}</td><td><span class="badge ${g.present_at?'yes':''}">${g.present_at?'Present':'Awaiting arrival'}</span></td><td>${walk ? (g.present_at?esc(formatTime(g.present_at)):`<button class="btn" data-walk-entry="${esc(g.entry)}">Check in</button>`) : `<button class="btn" data-pass="${esc(g.id)}">${icon('pass')}View</button>`}</td></tr>`).join('')}</tbody></table></div><div class="table-foot"><span>${page*perPage+1}–${page*perPage+rows.length} of ${data.length} guests</span>${data.length>perPage?`<div class="row">${btn('prev','Previous')}${btn('next','Next')}</div>`:''}</div>`;
  if(rows.length&&data.length>perPage){document.querySelector('[data-action=prev]').disabled=page===0;document.querySelector('[data-action=next]').disabled=(page+1)*perPage>=data.length;}
 }
 async function refresh(){
  const gen=++refreshGen;
- try{const d=await api('guests');if(!authenticated||gen!==refreshGen)return;roster=d.guests;draw();if($('sync-error'))$('sync-error').hidden=true;}
+ try{const d=await api('guests');if(!authenticated||gen!==refreshGen)return;roster=d.guests;walkins=d.walkins||[];draw();if($('sync-error'))$('sync-error').hidden=true;}
  catch(err){if(authenticated&&$('sync-error'))showError('sync-error','Guest list could not refresh. '+err.message);}
 }
-async function startDesk(){authenticated=true;tab='desk';result=null;roster=[];shell();await refresh();}
+async function startDesk(){authenticated=true;currentEvent='Inspire';tab='desk';result=null;walkins=[];roster=[];shell();await refresh();}
 function showModal(title,body){
  if(modal.open)modal.close();
  $('modal-body').innerHTML=`<div class="panel-title"><h2>${title}</h2><button type="button" class="x" aria-label="Close dialog" data-action="close">${icon('close')}</button></div>${body}`;
@@ -93,15 +96,20 @@ function formDialog(title,body,action,label){
  showModal(title,`<form id="edit" class="stack">${body}<p class="error" id="dialog-error" hidden></p><div class="dialog-actions">${btn('close','Cancel')}<button class="btn primary">${label}</button></div></form>`);
  $('edit').onsubmit=async e=>{e.preventDefault();const form=e.currentTarget;const b=form.querySelector('button:not([type=button])');b.disabled=true;try{await action(form);}catch(err){showError('dialog-error',err.message);}finally{b.disabled=false;}};
 }
-function addGuest(){
- const fields=[['first','First name'],['last','Last name'],['category','Category'],['email','Email address'],['company','Company name'],['title','Job title'],['country','Country']];
- const event=currentEvent;
- formDialog(`Add guest to ${event}`,fields.map(([key,label])=>`<label>${label}<input name="${key}" ${key==='first'?'required':''} type="${key==='email'?'email':'text'}" maxlength="${key==='email'?254:180}"></label>`).join(''),async form=>{
+function addGuest(walk=false){
+ const fields=walk ? [['name','Full name'],['email','Email address'],['company','Company name'],['title','Job title'],['country','Country'],['category','Category']] : [['first','First name'],['last','Last name'],['category','Category'],['email','Email address'],['company','Company name'],['title','Job title'],['country','Country']];
+ const entry=walk?crypto.randomUUID():null;
+ const inputs=fields.map(([key,label],i)=>`<label>${label}<input name="${key}" ${i===0?'required':''} type="${key==='email'?'email':'text'}" maxlength="${key==='email'?254:180}"></label>`).join('');
+ formDialog(walk?'Register walk-in':'Add guest to Inspire',inputs,async form=>{
   const guest=Object.fromEntries(new FormData(form));
-  const res=await api('manifest',{rows:[{...guest,event}]});await refresh();modal.close();
-  const created=eventRoster(event).find(g=>g.id===res.id);if(created)openPass(created);
+  if(walk){
+   const r=await api('walk-in',{entry,guest});
+   modal.close();await refresh();message(r.duplicate?'Walk-in already checked in.':'Walk-in registered and marked present.');return;
+  }
+  const res=await api('manifest',{rows:[{...guest,event:'Inspire'}]});await refresh();modal.close();
+  const created=roster.find(g=>g.id===res.id);if(created)openPass(created);
   message(res.enrolled?'Guest registration saved.':'Guest details verified.');
- },'Save registration');
+ },walk?'Register and check in':'Save registration');
 }
 function parseCSV(text){
  text=text.replace(/^\uFEFF/,'');const first=text.split(/\r?\n/,1)[0];const delim=first.includes(',')?',':';';
@@ -112,10 +120,10 @@ function parseCSV(text){
  }
  if(quoted)throw Error('A quoted field in the CSV was left open.');row.push(val);if(row.some(s=>s.trim()))rows.push(row);
  if(rows.length<2)throw Error('Add at least one guest beneath the header row.');
- return window.TechEventFiles.mapRows(rows,currentEvent);
+ return window.TechEventFiles.mapRows(rows,'Inspire');
 }
 function importGuests(){
- formDialog('Import participant manifest',`<p class="field-note">Excel imports use the Inspire and RLS sheets. CSV files import into ${currentEvent}. Matching emails keep their QR code and check-ins.</p><label>Manifest<input type="file" name="file" accept=".xlsx,.csv" required></label>`,async form=>{
+ formDialog('Import participant manifest',`<p class="field-note">Excel imports use the Inspire sheet. CSV files import into Inspire. Matching emails keep their QR code and check-ins.</p><label>Manifest<input type="file" name="file" accept=".xlsx,.csv" required></label>`,async form=>{
   const file=form.elements.file.files[0];if(file.size>4*1024*1024)throw Error('Choose a manifest smaller than 4 MB.');
   const rows=/\.xlsx$/i.test(file.name)?await window.TechEventFiles.workbook(file):parseCSV(await file.text());
   const res=await api('manifest',{rows});modal.close();tab='directory';shell();await refresh();
@@ -175,30 +183,36 @@ async function camera(){
  frame=requestAnimationFrame(loop);};frame=requestAnimationFrame(loop);
  }catch(e){if(version!==cameraVersion||!modal.open)return;stopCamera();$('camhelp').textContent=e.name==='NotAllowedError'?'Camera access was declined. Allow it in the browser, or use the scanner field.':e.message;}
 }
-async function exportPDFs(scope){
- const d=await api('guests');const people=d.guests.filter(g=>!scope||g.events[scope]);
+async function exportPDFs(){
+ const d=await api('guests');const people=d.guests.filter(g=>g.events.Inspire);
  if(!people.length){message('There are no participants to export.');return;}
  showModal('Export QR passes','<p id="pdf-progress" role="status">Preparing individual PDFs…</p>');
  const progress=$('pdf-progress');
- const blob=await window.TechEventFiles.zipPasses(people,scope,(done,total)=>progress.textContent=`Preparing pass ${done} of ${total}…`);
- const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`TechData-${scope||'All'}-QR-Passes.zip`;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+ const blob=await window.TechEventFiles.zipPasses(people,(done,total)=>progress.textContent=`Preparing pass ${done} of ${total}…`);
+ const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='TechData-Inspire-QR-Passes.zip';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
  if(progress.isConnected&&modal.open)modal.close();message(`${people.length} individual PDFs exported.`);
 }
 async function backupDesk(button){
  button.disabled=true;try{
- const r=await api('backup',{});showModal('Backup saved',`<div class="stack"><p>Your guest records, QR assignments, and check-ins for both events are backed up on Hostinger.</p><p class="field-note">techdata-private/backups/<br>${esc(r.file)}</p>${btn('close','Done')}</div>`);
+ const r=await api('backup',{});showModal('Backup saved',`<div class="stack"><p>Inspire passes, walk-in records and attendance are backed up on Hostinger.</p><p class="field-note">techdata-private/backups/<br>${esc(r.file)}</p>${btn('close','Done')}</div>`);
  }finally{button.disabled=false;}
 }
 function resetDesk(){
  const event=currentEvent;
- formDialog(`Reset ${event} attendance`,`<p class="field-note">This clears ${event} check-in times. Guest passes, registrations, and the other event’s attendance are preserved. A Hostinger backup is saved first.</p><label>Type RESET ${event}<input name="confirmation" autocomplete="off" required></label>`,async form=>{
+ formDialog(`Reset ${event} attendance`,`<p class="field-note">This clears ${event} check-in times. Guest records and the other list’s check-ins are kept. A Hostinger backup is saved first.</p><label>Type RESET ${event}<input name="confirmation" autocomplete="off" required></label>`,async form=>{
   const res=await api('reset-attendance',{event,confirmation:form.elements.confirmation.value});modal.close();result=null;shell();await refresh();message(`${res.cleared} ${event} check-ins cleared. Backup saved.`);
  },'Reset attendance');
 }
 document.addEventListener('click',async e=>{
  const target=e.target.closest('button');if(!target)return;
- if(target.dataset.event){currentEvent=target.dataset.event;page=0;query='';filter='';result=null;shell();await refresh();return;}
+ if(target.dataset.event){currentEvent=target.dataset.event;tab=currentEvent==='Walk-In'?'directory':'desk';page=0;query='';filter='';result=null;shell();await refresh();return;}
  if(target.dataset.pass){const g=eventRoster().find(r=>r.id===target.dataset.pass);if(g)openPass(g);return;}
+ if(target.dataset.walkEntry){
+  target.disabled=true;
+  try{await api('walk-in',{entry:target.dataset.walkEntry});await refresh();message('Walk-in checked in.');}
+  catch(err){message(err.message);}finally{target.disabled=false;}
+  return;
+ }
  const act=target.dataset.action;if(!act)return;
  try{switch(act){
  case 'close':modal.close();break;
@@ -209,21 +223,21 @@ document.addEventListener('click',async e=>{
    message('Staff password updated.');
   },'Save password');
   break;
- case 'logout':await api('logout',{});authenticated=false;roster=[];result=null;authView(true);break;
+ case 'logout':await api('logout',{});authenticated=false;walkins=[];roster=[];result=null;authView(true);break;
  case 'desk':case 'directory':tab=act;shell();await refresh();break;
- case 'add':addGuest();break;case 'import':importGuests();break;case 'camera':await camera();break;
+ case 'walk-in':addGuest(true);break;case 'add':addGuest();break;case 'import':importGuests();break;case 'camera':await camera();break;
  case 'prev':page=Math.max(0,page-1);drawTable();break;case 'next':page++;drawTable();break;
  case 'backup':await backupDesk(target);break;
  case 'reset':resetDesk();break;
- case 'pdf-all':case 'pdf-event':await exportPDFs(act==='pdf-all'?null:currentEvent);break;
- case 'exports':showModal('Export guest list',`<div class="stack">${btn('pdf-all','Export all participants’ QR PDFs (ZIP)','down','primary')}${btn('pdf-event','Export '+currentEvent+' QR PDFs (ZIP)','down')}${btn('attendance','Download '+currentEvent+' attendance CSV','down')}${btn('links','Download guest pass links','link')}${btn('printall','Print all guest passes','print')}</div>`);break;
- case 'attendance':exportFile(`TechData-${currentEvent}-attendance.csv`,[[...headers,'Category','Attendance','Check-in time (UTC)'],...eventRoster().map(g=>[...keys.map(k=>g[k]),g.category||'',g.present_at?'Present':'Awaiting arrival',g.present_at??''])]);modal.close();break;
+ case 'pdf-event':await exportPDFs();break;
+ case 'exports':showModal('Export guest list',`<div class="stack">${btn('pdf-event','Export Inspire QR PDFs (ZIP)','down','primary')}${btn('attendance','Download '+currentEvent+' attendance CSV','down')}${btn('links','Download Inspire pass links','link')}${btn('printall','Print Inspire passes','print')}</div>`);break;
+ case 'attendance':exportFile(`TechData-${currentEvent}-attendance.csv`,[[...headers,'Category','Attendance','Check-in time (UTC)'],...eventRoster().map(g=>[...keys.map(k=>g[k]),g.category||'',g.present_at?'Present':'Awaiting arrival',g.present_at??''])]);if(modal.open)modal.close();break;
  case 'links':exportFile('TechData-pass-links.csv',[['Full Name','Email','Guest pass link'],...roster.map(g=>[g.name,g.email,passLink(g.id)])]);modal.close();break;
  case 'printall':if(!roster.length){modal.close();message('Add guests first to print passes.');}else printPasses(roster);break;
  }}catch(err){message(err.message);}
 });
 async function init(){
- const count=++serial;authenticated=false;roster=[];if(modal.open)modal.close();$('session-tools').innerHTML='';
+ const count=++serial;authenticated=false;walkins=[];roster=[];if(modal.open)modal.close();$('session-tools').innerHTML='';
  try{
  const id=new URLSearchParams(location.hash.slice(1)).get('pass');
  if(id!==null){const g=await api('pass',{id:codeFrom(id)});if(count!==serial)return;app.innerHTML=`<section class="public-pass">${passCard(g)}<button class="btn" id="public-print">${icon('print')}Print pass</button></section>`;$('public-print').onclick=()=>printPasses([g]);return;}

@@ -89,6 +89,7 @@ function dispatch(string $action, array $input, array &$state, string $dir, bool
     if ($action === 'pass') {
         $id = $input['id'] ?? '';
         if (!is_string($id) || !isset($state['guests'][$id])) reject(404,'This guest pass was not found.');
+        if (!isset(memberships($state['guests'][$id])['Inspire'])) reject(404,'This pass is not registered for Inspire.');
         return publicPass($state['guests'][$id]);
     }
     if (!$active) reject(401,'Sign in to open the registration desk.');
@@ -99,16 +100,30 @@ function dispatch(string $action, array $input, array &$state, string $dir, bool
     }
     if ($action === 'guests') {
         $output=[];
-        foreach ($state['guests'] as $g) $output[]=$g + ['events'=>memberships($g)];
-        return ['guests'=>$output];
+        foreach ($state['guests'] as $g) {
+            $profile = memberships($g)['Inspire'] ?? null;
+            if ($profile !== null) $output[] = $profile + ['id'=>$g['id'], 'email'=>$g['email'], 'events'=>['Inspire'=>$profile]];
+        }
+        return ['guests'=>$output, 'walkins'=>array_values($state['walkins'] ?? [])];
     }
+    if ($action === 'walk-in') return checkInWalkIn($input,$state,$changed);
     if ($action === 'manifest') return importEvents($input['rows'] ?? [],$state,$changed);
     if ($action === 'backup') return ['file'=>snapshotDesk($dir,$state,'manual')];
     if ($action === 'reset-attendance') {
-        $event=eventName($input['event'] ?? null);
+        $event=$input['event'] ?? '';
+        if (!in_array($event,['Inspire','Walk-In'],true)) reject(422,'Choose an active attendance list.');
         if (($input['confirmation'] ?? '') !== 'RESET '.$event) reject(422,'Type RESET followed by the event name.');
         $file=snapshotDesk($dir,$state,'before-reset-'.$event);
         $count=0;
+        if ($event === 'Walk-In') {
+            foreach (array_keys($state['walkins'] ?? []) as $key) {
+                if ($state['walkins'][$key]['present_at'] === null) continue;
+                $state['walkins'][$key]['present_at'] = null;
+                $count++;
+            }
+            $changed=$count>0;
+            return ['file'=>$file,'cleared'=>$count];
+        }
         foreach ($state['guests'] as &$g) {
             $events=memberships($g);
             if (empty($events[$event]['present_at'])) continue;
@@ -126,7 +141,9 @@ function dispatch(string $action, array $input, array &$state, string $dir, bool
         if (!is_array($rows) || !array_is_list($rows) || count($rows)<1 || count($rows)>5000)
             reject(422, 'Choose between 1 and 5,000 guests per import.');
         $emails = [];
-        foreach ($state['guests'] as $guest) $emails[strtolower($guest['email'])] = true;
+        foreach ($state['guests'] as $guest) {
+            if (isset(memberships($guest)['Inspire'])) $emails[strtolower($guest['email'])] = true;
+        }
         $pending = [];
         $skipped = 0;
         foreach ($rows as $index=>$row) {

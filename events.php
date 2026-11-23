@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 function eventName(mixed $value): string {
-    if (!in_array($value, ['Inspire','RLS'], true)) reject(422, 'Choose Inspire or RLS.');
+    if ($value !== 'Inspire') reject(422, 'QR registration is available for Inspire only.');
     return $value;
 }
 
@@ -21,6 +21,7 @@ function importEvents(array $rows, array &$state, bool &$changed): array {
     $emails = [];
     $unaddressed = [];
     foreach ($guests as $id=>$g) {
+        if (!isset(memberships($g)['Inspire'])) continue;
         if ($g['email'] !== '') $emails[strtolower($g['email'])] = $id;
         else foreach (memberships($g) as $event=>$details)
             $unaddressed[identityKey($event,$details)] = $id;
@@ -54,7 +55,7 @@ function importEvents(array $rows, array &$state, bool &$changed): array {
             unset($unaddressed[$key]);
         } else $unaddressed[$key]=$id;
         $record['events']=$events;
-        $primary=$events['Inspire'] ?? $events['RLS'];
+        $primary=$events['Inspire'];
         foreach (['name','company','title','country'] as $field) $record[$field]=$primary[$field];
         $record['present_at']=$events['Inspire']['present_at'] ?? null;
         $firstId ??= $id;
@@ -67,6 +68,32 @@ function importEvents(array $rows, array &$state, bool &$changed): array {
 
 function identityKey(string $event, array $p): string {
     return $event."\n".strtolower(trim($p['name']))."\n".strtolower(trim($p['company']));
+}
+
+function checkInWalkIn(array $input, array &$state, bool &$changed): array {
+    $key = $input['entry'] ?? '';
+    if (!is_string($key) || !preg_match('/^[0-9a-f-]{36}$/D', $key)) reject(422, 'Invalid walk-in registration reference.');
+    $entries = $state['walkins'] ?? [];
+    if (!isset($entries[$key])) {
+        $guest = validGuest($input['guest'] ?? null, 1, true);
+        if ($guest['email'] !== '') {
+            foreach ($state['guests'] as $registered) {
+                if (isset(memberships($registered)['Inspire']) && strcasecmp($registered['email'], $guest['email']) === 0)
+                    reject(409, 'This email is on the Inspire list. Use the guest’s existing Inspire pass.');
+            }
+            foreach ($entries as $id=>$existing) {
+                if (strcasecmp($existing['email'], $guest['email']) === 0) { $key=$id; break; }
+            }
+        }
+        $entries[$key] ??= $guest + ['entry'=>$key, 'present_at'=>null];
+    }
+    $duplicate = $entries[$key]['present_at'] !== null;
+    if (!$duplicate) {
+        $entries[$key]['present_at'] = gmdate('Y-m-d\TH:i:s\Z');
+        $state['walkins'] = $entries;
+        $changed = true;
+    }
+    return ['duplicate'=>$duplicate, 'present_at'=>$entries[$key]['present_at']];
 }
 
 function snapshotDesk(string $dir, array $state, string $reason): string {

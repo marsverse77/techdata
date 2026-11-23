@@ -17,10 +17,12 @@ On first use, open the site once, then find `techdata-private/setup-code.txt` be
 QR passes contain a random ID. A guest can display a pass without signing in. Only an authenticated desk session can read the full roster or mark attendance. The attendance CSV export includes the five participant fields, status and check-in time. The pass distribution export includes a unique link for each guest.
 
 
-## Inspire and RLS
+## Inspire attendance and walk-ins
 
-Import an Excel workbook with Inspire and RLS sheets, or import CSV into the selected event. The importer reads category, first and last names, email, company, job title and country. A matching email keeps its QR ID across both events. Each event retains its own names, categories and check-in times. For a row without email the event, full name and company identify the existing pass. Preserve those fields when reimporting such a row. Legacy registrations and check-ins are shown under Inspire.
+Import the Inspire sheet of an Excel workbook, or import an Inspire CSV. The importer reads category, first and last names, email, company, job title and country. A matching email keeps its Inspire pass and check-in. For a row without email, the guest’s name and company identify the existing Inspire pass.
 
-Open Guest directory → Export for a ZIP of individual QR PDFs. Each PDF contains only the guest’s existing QR code, with a white scanning margin. The category and guest name appear in the filename. The all-participant ZIP contains one pass per unique guest and uses the Inspire filename for shared guests. Event-specific ZIPs use that sheet’s category and name.
+Guest directory → Export provides one QR-only PDF per Inspire registration, named by category and guest name. Historical RLS-only passes do not admit guests. The original IDs of shared Inspire guests continue to work.
 
-The Backup button writes a complete private desk snapshot under techdata-private/backups on Hostinger. Reset attendance clears only the selected event after a named confirmation and a successful snapshot. To recover the full desk, use the hosting file manager during a maintenance window to restore a chosen snapshot as techdata-private/desk.json. A complete snapshot includes the staff password hash in effect at that time.
+Choose Walk-In Participants → Register walk-in to enter an on-site guest and immediately mark them present. Walk-ins have a separate register and attendance CSV, and do not receive QR passes.
+
+Backup writes a full snapshot under techdata-private/backups on Hostinger. Reset attendance saves a backup first, then clears check-in times for the selected list. To recover the full desk, restore a chosen snapshot as techdata-private/desk.json during a maintenance window. The snapshot includes the staff password hash in effect at that time.

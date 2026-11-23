@@ -1,6 +1,5 @@
 (function eventFiles(){
 'use strict';
-const events=['Inspire','RLS'];
 const scripts=new Map();
 function library(src){
  if(!scripts.has(src)) scripts.set(src,new Promise((resolve,reject)=>{
@@ -39,8 +38,8 @@ async function workbook(file){
  const strings=zip.file('xl/sharedStrings.xml')?elements(await part('xl/sharedStrings.xml'),'si').map(richText):[];
  const result=[];
  for(const sheet of elements(book,'sheet')){
-  const event=events.find(e=>e.toLowerCase()===sheet.getAttribute('name').trim().toLowerCase());
-  if(!event)continue;
+  const event='Inspire';
+  if(sheet.getAttribute('name').trim().toLowerCase()!=='inspire')continue;
   const path=targets.get(sheet.getAttribute('r:id'));if(!path)throw Error('Missing sheet '+event);
   const doc=await part(new URL(path,'https://workbook.local/xl/').pathname.slice(1));
   const rows=elements(doc,'row').map(row=>{
@@ -56,7 +55,7 @@ async function workbook(file){
   });
   result.push(...mapRows(rows,event));
  }
- if(!result.length)throw Error('No participants found on the Inspire or RLS sheets.');
+ if(!result.length)throw Error('No participants found on the Inspire sheet.');
  return result;
 }
 function category(value){return (value||'Participant').replace(/\s+[-–—]\s+/g,' ').replace(/\s+/g,' ').trim().toUpperCase();}
@@ -87,11 +86,11 @@ async function qrPdf(id){
  }
  return pdf.save();
 }
-async function zipPasses(guests,scope,onProgress){
+async function zipPasses(guests,onProgress){
  await Promise.all([library('jszip.min.js'),library('pdf-lib.min.js')]);
  const zip=new JSZip(),used=new Set();
  for(const [i,g] of guests.entries()){
-  const event=scope||events.find(e=>g.events[e]),p=g.events[event];
+  const p=g.events.Inspire;
   let base=safeName(`[${category(p.category)}] ${p.name}`);if(used.has(base.toLowerCase()))base+=' - '+g.id;
   used.add(base.toLowerCase());zip.file(base+'.pdf',await qrPdf(g.id));
   if(i%8===0||i===guests.length-1){onProgress(i+1,guests.length);await new Promise(r=>setTimeout(r,0));}

@@ -8,6 +8,7 @@ import socket
 import subprocess
 import tempfile
 import time
+import uuid
 from urllib.error import HTTPError
 from urllib.request import build_opener, HTTPCookieProcessor, Request
 
@@ -84,30 +85,65 @@ with tempfile.TemporaryDirectory() as tmp:
         assert sorted(scan['duplicate'] for scan in scans) == [False,True]
         assert scans[0]['guest']['present_at'] == scans[1]['guest']['present_at']
         assert sum(bool(g['present_at']) for g in request(other,bases[1],'guests')['guests']) == 1
-        # A single badge admits the same email to each enrolled event independently.
         inspire = dict(guest, event='Inspire', first='Sample', last='Guest', category='Partner - Delegate')
-        rls = dict(inspire, event='RLS', first='Alternate', category='Tech Data - RLS', country='ANZ')
         missing = dict(inspire, first='No', last='Email', email='')
-        request(staff,base,'manifest',{'rows':[inspire,rls,missing]})
-        again = request(staff,base,'manifest',{'rows':[inspire,rls,missing]})
-        assert again['added'] == 0 and again['skipped'] == 3
-        merged = next(g for g in request(staff,base,'guests')['guests'] if g['id'] == guest_id)
-        assert merged['events']['Inspire']['present_at'] and not merged['events']['RLS']['present_at']
-        assert merged['events']['RLS']['name'] == 'Alternate Guest'
-        request(staff,base,'scan',{'id':imported['id'],'event':'RLS'},409)
-        assert not request(staff,base,'scan',{'id':guest_id,'event':'RLS'})['duplicate']
-        assert request(staff,base,'scan',{'id':guest_id,'event':'RLS'})['duplicate']
+        request(staff,base,'manifest',{'rows':[inspire, missing]})
+        again = request(staff,base,'manifest',{'rows':[inspire, missing]})
+        assert again['added'] == 0 and again['skipped'] == 2
+
+        # Restore representative historical memberships directly in the disposable store.
+        storefile = storage/'desk.json'
+        state = json.loads(storefile.read_text())
+        both = state['guests'][guest_id]
+        historical = dict(both['events']['Inspire'], name='Archive Guest', present_at='2026-01-01T10:00:00Z')
+        both['events']['RLS'] = historical
+        retired_id = 'TD-'+'9'*24
+        state['guests'][retired_id] = dict(both, id=retired_id, email='archive@example.test', events={'RLS':historical})
+        storefile.write_text(json.dumps(state))
+
+        live = request(staff,base,'guests')
+        assert len(live['guests'])==3 and live['walkins']==[]
+        assert all(set(g['events'])=={'Inspire'} for g in live['guests'])
+        assert request(guests,base,'pass',{'id':guest_id})['id']==guest_id
+        for action, status in [('pass',404),('scan',409)]:
+            request(staff,base,action,{'id':retired_id},status)
+        request(staff,base,'scan',{'id':guest_id,'event':'RLS'},422)
+        request(staff,base,'manifest',{'rows':[dict(inspire,event='RLS')]},422)
+        assert request(staff,base,'scan',{'id':guest_id,'event':'Inspire'})['duplicate']
+
+        entry = str(uuid.uuid4())
+        walk = {'entry':entry,'guest':dict(guest, name='Walk In',email='archive@example.test')}
+        request(guests,base,'walk-in',walk,401)
+        request(staff,base,'walk-in',dict(walk,guest=guest),409)
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            jobs = [pool.submit(request,op,url,'walk-in',dict(walk,entry=k)) for op,url,k in zip([staff,other],bases,[entry,str(uuid.uuid4())])]
+            arrivals = [job.result() for job in jobs]
+        assert sorted(r['duplicate'] for r in arrivals)==[False,True]
+        assert arrivals[0]['present_at']==arrivals[1]['present_at']
+        live = request(staff,base,'guests')
+        assert len(live['guests'])==3 and len(live['walkins'])==1
+        visitor = live['walkins'][0]
+        assert 'id' not in visitor and visitor['present_at']
+        request(guests,base,'pass',{'id':visitor['entry']},404)
+        request(staff,base,'scan',{'id':visitor['entry']},404)
         request(guests,base,'backup',{},401)
         request(guests,base,'reset-attendance',{'event':'Inspire','confirmation':'RESET Inspire'},401)
         backup=request(staff,base,'backup',{})
-        assert (storage/'backups'/backup['file']).exists()
-        request(staff,base,'reset-attendance',{'event':'RLS','confirmation':'RESET Inspire'},422)
+        assert json.loads((storage/'backups'/backup['file']).read_text())['walkins'][visitor['entry']]['present_at']
+        request(staff,base,'reset-attendance',{'event':'RLS','confirmation':'RESET RLS'},422)
+        request(staff,base,'reset-attendance',{'event':'Walk-In','confirmation':'RESET Inspire'},422)
         reset=request(staff,base,'reset-attendance',{'event':'Inspire','confirmation':'RESET Inspire'})
         assert reset['cleared']==1
         before = json.loads((storage/'backups'/reset['file']).read_text())
         assert before['guests'][guest_id]['events']['Inspire']['present_at']
-        after = next(g for g in request(staff,base,'guests')['guests'] if g['id']==guest_id)
-        assert not after['events']['Inspire']['present_at'] and after['events']['RLS']['present_at']
+        live = request(staff,base,'guests')
+        assert not next(g for g in live['guests'] if g['id']==guest_id)['present_at']
+        assert live['walkins'][0]['present_at']==visitor['present_at']
+        assert json.loads(storefile.read_text())['guests'][guest_id]['events']['RLS']==historical
+        reset=request(staff,base,'reset-attendance',{'event':'Walk-In','confirmation':'RESET Walk-In'})
+        assert reset['cleared']==1
+        assert not request(staff,base,'walk-in',{'entry':visitor['entry']})['duplicate']
+        assert request(staff,base,'walk-in',walk)['duplicate']
         replacement = 'New-fixture-password!'
         change = {'password':password,'newPassword':replacement}
         request(guests,base,'change-password',change,401)

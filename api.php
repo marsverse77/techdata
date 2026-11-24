@@ -109,6 +109,23 @@ function dispatch(string $action, array $input, array &$state, string $dir, bool
     if ($action === 'walk-in') return checkInWalkIn($input,$state,$changed);
     if ($action === 'manifest') return importEvents($input['rows'] ?? [],$state,$changed);
     if ($action === 'backup') return ['file'=>snapshotDesk($dir,$state,'manual')];
+    if ($action === 'remove-guest') {
+        $id = $input['id'] ?? '';
+        if (!is_string($id) || !isset($state['guests'][$id])) reject(404,'This registration was not found.');
+        $events = memberships($state['guests'][$id]);
+        if (!isset($events['Inspire'])) reject(404,'This registration was not found.');
+        if (($input['confirmation'] ?? '') !== $events['Inspire']['name']) reject(422,'Enter the full name as shown on the pass.');
+        $file = snapshotDesk($dir,$state,'before-remove');
+        unset($events['Inspire']);
+        if ($events) {
+            $state['guests'][$id]['events'] = $events;
+            $state['guests'][$id]['present_at'] = null;
+        } else {
+            unset($state['guests'][$id]);
+        }
+        $changed = true;
+        return ['file'=>$file];
+    }
     if ($action === 'reset-attendance') {
         $event=$input['event'] ?? '';
         if (!in_array($event,['Inspire','Walk-In'],true)) reject(422,'Choose an active attendance list.');

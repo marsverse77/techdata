@@ -154,6 +154,22 @@ with tempfile.TemporaryDirectory() as tmp:
         request(fresh,base,'login',{'password':password},403)
         request(fresh,base,'login',{'password':replacement})
         assert len(request(fresh,base,'guests')['guests']) == 3
+        original = request(fresh,base,'guests')
+        remove = {'id':guest_id, 'confirmation':'Sample Guest'}
+        request(guests,base,'remove-guest',remove,401)
+        request(fresh,base,'remove-guest',dict(remove,confirmation='Other Guest'),422)
+        assert request(fresh,base,'guests') == original
+        for target in (guest_id, imported['id']):
+            prior = json.loads(storefile.read_text())
+            result = request(fresh,base,'remove-guest',dict(remove,id=target))
+            assert json.loads((storage/'backups'/result['file']).read_text()) == prior
+            expected = [g for g in original['guests'] if g['id'] != target]
+            assert request(fresh,base,'guests') == dict(original,guests=expected)
+            original['guests'] = expected
+            request(guests,base,'pass',{'id':target},404)
+            request(fresh,base,'scan',{'id':target},409 if target==guest_id else 404)
+            request(fresh,base,'remove-guest',dict(remove,id=target),404)
+        assert json.loads(storefile.read_text())['guests'][guest_id]['events'] == {'RLS':historical}
         request(staff,base,'logout',{})
         request(staff,base,'guests',status=401)
         print('Activation, auth, imports, pass privacy and concurrent check-in passed.')

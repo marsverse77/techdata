@@ -148,9 +148,15 @@ function printPasses(guests){
 }
 window.addEventListener('afterprint',()=>$('printarea').replaceChildren());
 function openPass(g){
- showModal('Guest pass',`${passCard(g)}<div class="row pass-actions"><button class="btn" id="copy">${icon('link')}Copy pass link</button><button class="btn primary" id="print">${icon('print')}Print pass</button></div><div id="copy-field"></div>`);
+ showModal('Guest pass',`${passCard(g)}<div class="row pass-actions"><button class="btn" id="copy">${icon('link')}Copy pass link</button><button class="btn primary" id="print">${icon('print')}Print pass</button></div><div id="copy-field"></div><button type="button" class="linkbtn" id="remove-guest">Remove registration</button>`);
  $('copy').onclick=async()=>{const url=passLink(g.id);try{await navigator.clipboard.writeText(url);$('copy').textContent='Link copied';}catch{$('copy-field').innerHTML='<label>Guest pass link<input readonly id="pass-link"></label>';$('pass-link').value=url;$('pass-link').select();}};
  $('print').onclick=()=>printPasses([g]);
+ $('remove-guest').onclick=()=>{
+  formDialog('Remove Inspire registration',`<p>Removing <strong>${esc(g.name)}</strong> will deactivate this guest’s Inspire pass. A backup will be saved on Hostinger.</p><label>Type the guest’s full name<input name="confirmation" autocomplete="off" required></label>`,async form=>{
+   await api('remove-guest',{id:g.id,confirmation:form.elements.confirmation.value});
+   modal.close();result=null;await refresh();message('Registration removed. Backup saved.');
+  },'Remove registration');
+ };
 }
 function codeFrom(value){
  const s=value.trim();if(/^TD-[0-9a-f]{24}$/i.test(s))return s.toUpperCase();
